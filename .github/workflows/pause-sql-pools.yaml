@@ -17,27 +17,31 @@ jobs:
         uses: azure/CLI@v1
         with:
           inlineScript: |
-            # Get all resource groups with tag "opplæring"
-            # For each group: Get all workspaces
-            # For each workspace, get all pools
-            # For each pool: Check status. If not paused then try to pause.
-
-            RESOURCE_GROUPS=$(az group list --tag opplæring --query "[].name" -o tsv)
+            # 1. Get all resource groups with tag "opplæring"
+            # 2. For each group: Get all workspaces
+            # 3. For each workspace, get all pools
+            # 4. For each pool: Check status. If not paused then try to pause.
+            RESOURCE_GROUPS=$(az group list --tag opplæring --query "[].name" -o tsv --only-show-errors)
             while IFS= read -r GROUP_NAME ; do
-              echo "Checking for Synapse Workspaces in $GROUP_NAME";
-              WORKSPACES=$(az synapse workspace list -g $GROUP_NAME --query "[].name" -o tsv)
-              while IFS= read -r WORKSPACE_NAME ; do
-                echo "Checking for SQL Pools in $WORKSPACE_NAME";
-                SQL_POOLS=$(az synapse sql pool list -g $GROUP_NAME --workspace-name $WORKSPACE_NAME --query "[].name" -o tsv)
-                while IFS= read -r POOL_NAME ; do
-                  echo "Checking status for pool $POOL_NAME";
-                  POOL_STATUS=$(az synapse sql pool show --query "status" --name $POOL_NAME --workspace-name $WORKSPACE_NAME -g $GROUP_NAME)
-                  if [[ "$POOL_STATUS" == "Paused" ]]; then
-                    echo "Pool is already paused"
-                  else
-                    echo "Pool is not paused ($POOL_STATUS)"
-                    az synapse sql pool pause --name $POOL_NAME --workspace-name $WORKSPACE_NAME -g $GROUP_NAME
+              if [ ! -z "$GROUP_NAME" ]; then
+                echo "Checking for Synapse Workspaces in $GROUP_NAME";
+                WORKSPACES=$(az synapse workspace list -g $GROUP_NAME --query "[].name" -o tsv --only-show-errors)
+                while IFS= read -r WORKSPACE_NAME ; do
+                  if [ ! -z "$WORKSPACE_NAME" ]; then
+                    SQL_POOLS=$(az synapse sql pool list -g $GROUP_NAME --workspace-name $WORKSPACE_NAME --query "[].name" -o tsv --only-show-errors)
+                    while IFS= read -r POOL_NAME ; do
+                      if [ ! -z "$POOL_NAME" ]; then
+                        echo "Checking status for pool $POOL_NAME";
+                        POOL_STATUS=$(az synapse sql pool show --query "status" --name $POOL_NAME --workspace-name $WORKSPACE_NAME -g $GROUP_NAME --only-show-errors)
+                        if [[ "$POOL_STATUS" == "Paused" ]]; then
+                          echo "Pool is already paused"
+                        else
+                          echo "Pool is NOT paused ($POOL_STATUS)"
+                          az synapse sql pool pause --name $POOL_NAME --workspace-name $WORKSPACE_NAME -g $GROUP_NAME --only-show-errors
+                        fi
+                      fi
+                    done <<< "$SQL_POOLS"
                   fi
-                done <<< "$SQL_POOLS"
-              done <<< "$WORKSPACES"
+                done <<< "$WORKSPACES"
+              fi
             done <<< "$RESOURCE_GROUPS"
